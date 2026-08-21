@@ -254,6 +254,7 @@ impl RulesEngine {
                         compiled.insert(regex_str.clone(), regex);
                     }
                 }
+            }
         }
         *self.compiled_regexes.write().await = compiled;
     }
