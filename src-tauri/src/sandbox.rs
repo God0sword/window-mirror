@@ -266,7 +266,7 @@ impl SandboxService {
             created_ms: chrono::Utc::now().timestamp_millis(),
             module_bytes: payload_bytes,
             settings,
-            engine_info: format!("wasmtime v{}", wasmtime::VERSION),
+            engine_info: format!("wasmtime v{}", env!("CARGO_PKG_VERSION")),
         })
     }
 

@@ -9,7 +9,6 @@ mod commands;
 mod events;
 mod state;
 mod setup;
-mod proxy;
 mod sandbox;
 mod timeline;
 mod workspace;
@@ -54,7 +53,6 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_webview::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(window_mirror_plugin())
         .setup(setup_app)

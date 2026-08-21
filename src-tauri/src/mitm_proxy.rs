@@ -17,17 +17,17 @@ use std::time::Instant;
 
 use anyhow::{Context as _, Result};
 use hudsucker::{
-    async_trait::async_trait,
+    builder::ProxyBuilder,
     certificate_authority::RcgenAuthority,
     hyper::{
-        body::HttpBody,
         header::{HeaderName, HeaderValue},
         Request, Response, StatusCode,
         Uri,
     },
-    Body, HttpContext, HttpHandler, ProxyBuilder, RequestOrResponse,
-    WebSocketContext, Message as WsMessage,
+    tokio_tungstenite::tungstenite::Message as WsMessage,
+    Body, HttpContext, HttpHandler, RequestOrResponse, WebSocketContext, WebSocketHandler,
 };
+use http_body;
 use tokio::sync::{broadcast, Notify, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -508,6 +508,7 @@ pub struct Status {
 // hudsucker handler
 // ============================================================================
 
+#[derive(Clone)]
 struct Handler {
     cfg: Arc<RwLock<ProxyConfig>>,
     rules: Arc<RulesEngine>,
@@ -524,7 +525,7 @@ static PENDING: once_cell::sync::Lazy<PendingMap> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 impl Handler {
-    fn push_history(&self, req: HttpRequestEvent, resp: Option<HttpResponseEvent>) {
+    async fn push_history(&self, req: HttpRequestEvent, resp: Option<HttpResponseEvent>) {
         let mut h = self.history.write().await;
         if h.len() >= HISTORY_CAP {
             h.pop_front();
@@ -536,18 +537,17 @@ impl Handler {
         let _ = self.events.send(ev);
     }
 
-    fn bump<F: FnOnce(&mut ProxyStats)>(&self, f: F) {
-        f(&mut self.stats.write());
+    async fn bump<F: FnOnce(&mut ProxyStats)>(&self, f: F) {
+        f(&mut self.stats.write().await);
     }
 }
 
-#[async_trait]
 impl HttpHandler for Handler {
     async fn handle_request(
         &mut self,
-        _ctx: &mut HttpContext,
+        _ctx: &HttpContext,
         mut req: Request<Body>,
-    ) -> Option<RequestOrResponse> {
+    ) -> RequestOrResponse {
         let cfg = self.cfg.read().await;
         let max_body = cfg.max_body_size;
         let capture_bodies = cfg.capture_bodies;
@@ -594,7 +594,7 @@ impl HttpHandler for Handler {
             headers: headers.clone(),
             body: body_opt.as_ref().map(pretty_body),
             body_truncated: truncated,
-            remote_addr: _ctx.client_addr.map(|a| a.to_string()).unwrap_or_default(),
+            remote_addr: _ctx.client_addr.to_string(),
             intercepted: false,
             rule_id: None,
             paused: false,
@@ -603,7 +603,8 @@ impl HttpHandler for Handler {
         self.bump(|s| {
             s.total_requests += 1;
             s.bytes_up += up_bytes;
-        });
+        })
+        .await;
 
         // ---- rules ---------------------------------------------------------
         let action = self
@@ -618,14 +619,14 @@ impl HttpHandler for Handler {
         match action {
             Some(InterceptAction::Pass) => {}
             Some(InterceptAction::Block) => {
-                self.bump(|s| s.blocked_requests += 1);
+                self.bump(|s| s.blocked_requests += 1).await;
                 intercepted = true;
                 let resp = text_response(StatusCode::FORBIDDEN, "Blocked by Window Mirror");
                 let mut resp_ev = response_event(&rid, &resp, TimingInfo::default(), true, rule_id.clone(), false);
                 resp_ev.body = Some("Blocked by Window Mirror".into());
-                self.push_history(req_ev.clone(), Some(resp_ev.clone()));
+                self.push_history(req_ev.clone(), Some(resp_ev.clone())).await;
                 self.emit(request_done(&req_ev, Some(resp_ev))).await;
-                return Some(RequestOrResponse::Response(resp));
+                return RequestOrResponse::Response(resp);
             }
             Some(InterceptAction::Redirect { redirect_url }) => {
                 intercepted = true;
@@ -637,9 +638,9 @@ impl HttpHandler for Handler {
                     .expect("static redirect");
                 let mut resp_ev = response_event(&rid, &resp, TimingInfo::default(), true, rule_id.clone(), false);
                 resp_ev.body = Some(String::new());
-                self.push_history(req_ev.clone(), Some(resp_ev.clone()));
+                self.push_history(req_ev.clone(), Some(resp_ev.clone())).await;
                 self.emit(request_done(&req_ev, Some(resp_ev))).await;
-                return Some(RequestOrResponse::Response(resp));
+                return RequestOrResponse::Response(resp);
             }
             Some(InterceptAction::Mock { mock }) => {
                 intercepted = true;
@@ -656,14 +657,14 @@ impl HttpHandler for Handler {
                     .expect("mock response");
                 let mut resp_ev = response_event(&rid, &resp, TimingInfo::default(), true, rule_id.clone(), false);
                 resp_ev.body = Some(mock.body);
-                self.push_history(req_ev.clone(), Some(resp_ev.clone()));
+                self.push_history(req_ev.clone(), Some(resp_ev.clone())).await;
                 self.emit(request_done(&req_ev, Some(resp_ev))).await;
-                return Some(RequestOrResponse::Response(resp));
+                return RequestOrResponse::Response(resp);
             }
             Some(InterceptAction::Modify { modifications }) => {
                 intercepted = true;
                 rule_id = Some("modify".into());
-                self.bump(|s| s.modified_requests += 1);
+                self.bump(|s| s.modified_requests += 1).await;
                 if let Err(e) = apply_modifications(&mut req, &modifications) {
                     warn!("modify failed on {url}: {e}");
                 }
@@ -734,14 +735,14 @@ impl HttpHandler for Handler {
 
         let final_ev = finalize_req_ev(req_ev, &req, intercepted, rule_id.clone());
         self.emit(request_done(&final_ev, None)).await;
-        self.push_history(final_ev, None);
+        self.push_history(final_ev, None).await;
 
-        None // forward upstream
+        RequestOrResponse::Request(req) // forward upstream
     }
 
     async fn handle_response(
         &mut self,
-        _ctx: &mut HttpContext,
+        _ctx: &HttpContext,
         mut res: Response<Body>,
     ) -> Response<Body> {
         let cfg = self.cfg.read().await;
@@ -771,7 +772,8 @@ impl HttpHandler for Handler {
         self.bump(|s| {
             s.total_responses += 1;
             s.bytes_down += down_bytes;
-        });
+        })
+        .await;
 
         // Pair with oldest pending request (any host queue that's non-empty).
         let paired: Option<HttpRequestEvent> = {
@@ -809,15 +811,15 @@ impl HttpHandler for Handler {
                 .await;
 
             if let Some(InterceptAction::Block) = action {
-                self.bump(|s| s.modified_responses += 1);
+                self.bump(|s| s.modified_responses += 1).await;
                 let blocked =
                     text_response(StatusCode::FORBIDDEN, "Blocked by Window Mirror");
                 let ev = response_event(&req_ev.id, &blocked, timing, true, None, false);
-                self.push_history(req_ev, Some(ev));
+                self.push_history(req_ev, Some(ev)).await;
                 return blocked;
             }
             if let Some(InterceptAction::Modify { modifications }) = action {
-                self.bump(|s| s.modified_responses += 1);
+                self.bump(|s| s.modified_responses += 1).await;
                 if let Err(e) = apply_response_modifications(&mut res, &modifications) {
                     warn!("response modify failed: {e}");
                 }
@@ -836,7 +838,7 @@ impl HttpHandler for Handler {
         .body_override(body_text.clone(), truncated);
 
         if let Some(req_ev) = paired {
-            self.push_history(req_ev, Some(final_resp.clone()));
+            self.push_history(req_ev, Some(final_resp.clone())).await;
             self.emit(request_done(&req_ev, Some(final_resp))).await;
         }
 
@@ -848,7 +850,6 @@ impl HttpHandler for Handler {
 // WebSocket passthrough (capture only)
 // ============================================================================
 
-#[async_trait]
 impl WebSocketHandler for Handler {
     async fn handle_websocket(
         &mut self,
@@ -856,7 +857,7 @@ impl WebSocketHandler for Handler {
         msg: WsMessage,
     ) -> Option<WsMessage> {
         if self.cfg.read().await.capture_websocket {
-            self.bump(|s| s.websocket_frames += 1);
+            self.bump(|s| s.websocket_frames += 1).await;
         }
         Some(msg) // always forward untouched for now
     }
@@ -866,7 +867,7 @@ impl WebSocketHandler for Handler {
 // Helpers
 // ============================================================================
 
-async fn read_body<B: HttpBody<Data = bytes::Bytes> + Unpin>(
+async fn read_body<B: http_body::Body<Data = bytes::Bytes> + Unpin>(
     body: &mut B,
     max: usize,
 ) -> Vec<u8> {
