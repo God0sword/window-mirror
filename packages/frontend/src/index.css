@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --zen-bg: #0d0d0d;
+  --zen-surface: #141414;
+  --zen-elevated: #1c1c1c;
+  --zen-border: #2a2a2a;
+  --zen-accent: #00d4aa;
+  --zen-accent-glow: rgba(0, 212, 170, 0.3);
+  --apple-glass: rgba(28, 28, 30, 0.72);
+  --apple-glass-border: rgba(255, 255, 255, 0.08);
+  --mono-font: 'JetBrains Mono', 'Fira Code', monospace;
+  --sans-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-zen-border;
+  }
+  
+  html, body, #root {
+    @apply h-full w-full m-0 p-0 bg-zen-bg text-white font-sans antialiased;
+    font-family: var(--sans-font);
+  }
+  
+  ::selection {
+    @apply bg-zen-accent/30 text-white;
+  }
+  
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zen-border rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-apple-glass border border-apple-glass-border backdrop-blur-[20px];
+  }
+  
+  .glass-strong {
+    @apply bg-apple-glass/90 border border-apple-glass-border backdrop-blur-[30px];
+  }
+  
+  .zen-btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200
+           hover:bg-zen-accent/10 hover:border-zen-accent/30
+           focus:outline-none focus:ring-2 focus:ring-zen-accent/50
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .zen-btn-primary {
+    @apply zen-btn bg-zen-accent text-zen-bg hover:bg-zen-accent/90 border-zen-accent;
+  }
+  
+  .zen-input {
+    @apply w-full px-3 py-2 rounded-lg bg-zen-surface border border-zen-border
+           text-white placeholder-gray-500
+           focus:outline-none focus:ring-2 focus:ring-zen-accent/50 focus:border-zen-accent
+           transition-all duration-150;
+  }
+  
+  .zen-panel {
+    @apply glass-strong rounded-xl p-4;
+  }
+  
+  .zen-tab {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-150
+           hover:bg-zen-elevated hover:text-white
+           data-[active]:bg-zen-accent/10 data-[active]:text-zen-accent data-[active]:border-b-2 data-[active]:border-zen-accent;
+  }
+  
+  .monaco-container {
+    @apply h-full w-full rounded-lg overflow-hidden border border-zen-border bg-zen-surface;
+  }
+}
+
+@layer utilities {
+  .animate-slide-in {
+    animation: slideIn 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 200ms ease-out;
+  }
+  
+  .animate-pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+  
+  @keyframes slideIn {
+    from { transform: translateX(-100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 20px var(--zen-accent-glow); }
+    50% { box-shadow: 0 0 40px rgba(0, 212, 170, 0.6); }
+  }
+  
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--zen-border) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,25 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+
+# Vite
+*.local
+.tsbuildinfo
+node_modules/.tmp/
+
+# Tauri
+src-tauri/gen/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Window Mirror local data
+*.window-mirror/
+window-mirror.log

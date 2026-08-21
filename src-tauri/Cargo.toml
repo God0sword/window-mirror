@@ -1,0 +1,123 @@
+[package]
+name = "window-mirror"
+version = "0.1.0"
+description = "A unified browser-IDE-pentest platform. The surveillance platform that happens to render HTML."
+license = "MIT"
+repository = "https://github.com/window-mirror/app"
+edition = "2021"
+rust-version = "1.78"
+
+[build-dependencies]
+tauri-build = "2.0"
+
+[dependencies]
+# Workspace dependencies
+tokio = { version = "1.40", features = ["full", "tracing"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+uuid = { version = "1.0", features = ["serde", "v4", "v7"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP / Proxy
+hyper = { version = "1.0", features = ["full", "http2"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http = "1.0"
+http-body = "1.0"
+http-body-util = "0.1"
+rustls = { version = "0.23", features = ["std"] }
+rustls-pemfile = "2.0"
+rcgen = "0.13"
+h2 = "0.4"
+tokio-rustls = "0.26"
+hyper-rustls = "0.26"
+which = "6"
+
+# MITM Proxy
+hudsucker = { version = "0.24", features = ["rcgen-ca", "rustls-client", "http2", "full", "decoder"] }
+moka = "0.12"
+
+# WebSocket
+tokio-tungstenite = { version = "0.21", features = ["__rustls-tls"] }
+tungstenite = "0.21"
+
+# Storage
+sled = "0.34"
+redb = "2.1"
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }
+
+# Sandbox
+wasmtime = { version = "25.0", features = ["cranelift"] }
+wasmtime-wasi = { version = "25.0", features = ["preview1"] }
+wasmparser = "0.215"
+
+# Tauri
+tauri = { version = "2.0", features = ["tray-icon", "default"] }
+tauri-plugin-store = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-process = "2.0"
+tauri-plugin-window-state = "2.0"
+async-trait = "0.1"
+
+# Utils
+clap = { version = "4.4", features = ["derive", "env"] }
+config = "0.14"
+notify = "6.1"
+walkdir = "2.0"
+ignore = "0.4"
+glob = "0.3"
+regex = "1.0"
+lazy_static = "1.4"
+parking_lot = "0.12"
+dashmap = "5.5"
+crossbeam = "0.8"
+flume = "0.11"
+bytes = "1.0"
+mime = "0.3"
+url = "2.0"
+percent-encoding = "2.3"
+base64 = "0.22"
+hex = "0.4"
+dirs = "5.0"
+toml = "0.8"
+wat = "1.0"
+once_cell = "1"
+# tree-sitter runtime 0.24 pairs with grammar crates exposing `LANGUAGE` consts.
+tree-sitter = "0.24"
+
+# Tree-sitter grammars (latest published lines)
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-php = "0.24"
+tree-sitter-ruby = "0.23"
+tree-sitter-html = "0.23"
+tree-sitter-css = "0.25"
+tree-sitter-json = "0.24"
+
+[dev-dependencies]
+tempfile = "3.0"
+predicates = "3.0"
+wiremock = "0.5"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+opt-level = 3
+
+[profile.dev]
+debug = true
+opt-level = 0
