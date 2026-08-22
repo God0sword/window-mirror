@@ -206,7 +206,7 @@ impl TimelineStore {
             Database::builder()
                 .create_with_backend(redb::backends::InMemoryBackend::new())
                 .expect("in-memory redb must always work")
-        )});
+        }));
 
         // Ensure both tables exist before first use.
         let write_txn = db.begin_write().expect("begin_write on fresh db");
