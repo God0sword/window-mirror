@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/src-tauri/target/release/window-mirror /usr/local/bin/window-mirror
+# Workspace root Cargo.toml puts artifacts in /app/target, not src-tauri/target
+COPY --from=builder /app/target/release/window-mirror /usr/local/bin/window-mirror
 
 ENTRYPOINT ["window-mirror"]
