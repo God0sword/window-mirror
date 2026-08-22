@@ -356,6 +356,11 @@ Rendering emulation, Recorder…), Bugfender/LaunchDarkly/DebugBear practitioner
 
 Legend: ✅ done · 🟡 partial/in-progress · 🔴 not started
 
+## CI Status
+- ✅ 2026-08-22: ALL GREEN — Frontend typecheck+build, Rust cargo check+clippy, Docker release build.
+- Backend compiled for the first time ever: hudsucker 0.24 / rcgen 0.14 / wasmtime 25 / tauri 2 API alignment done.
+- Dockerfile fixed for workspace-root target dir; hudsucker `full` feature dropped (pure-rust stack).
+
 ## Phase 0 Foundation
 - ✅ tsconfig strict (paths @kernel/@components/@stores)
 - ✅ vite.config: wasm+solid, aliases, worker es, chunk split, port1420
