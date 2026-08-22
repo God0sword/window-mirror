@@ -65,10 +65,6 @@
     }
   },
   "plugins": {
-    "store": {
-      "autoSave": true,
-      "filename": "window-mirror-store.dat"
-    },
     "fs": {
       "scope": ["$APPDATA/**", "$HOME/**", "$TEMP/**", "$RESOURCE/**"]
     },
