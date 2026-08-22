@@ -687,10 +687,10 @@ pub async fn internal_start_services(handle: AppHandle) -> Result<(), String> {
     let settings = state.settings.read().await;
     if settings.settings.proxy.auto_start {
         drop(settings);
-        state.proxy.start().await.map_err(|e| {
-            tracing::error!("Failed to auto-start proxy: {}", e);
-            e
-        })?;
+        if let Err(e) = state.proxy.start().await {
+            tracing::error!("Failed to auto-start proxy: {e:#}");
+            return Err(e.to_string());
+        }
         tracing::info!("Proxy auto-started on port {}", state.proxy.status().await.port);
     } else {
         tracing::info!("Proxy auto-start disabled (enable in settings)");

@@ -583,7 +583,7 @@ impl HttpHandler for Handler {
         let mut body_opt: Option<Vec<u8>> = None;
         let mut truncated = false;
         let mut up_bytes: u64 = 0;
-        if capture_bodies && req.body().size_hint().exact().map_or(true, |s| s <= max_body) {
+        if capture_bodies && req.body().size_hint().exact().map_or(true, |s| s <= max_body as u64) {
             let bytes = read_body(req.body_mut(), max_body).await;
             up_bytes = bytes.len() as u64;
             body_opt = Some(bytes);
@@ -844,8 +844,8 @@ impl HttpHandler for Handler {
         .body_override(body_text.clone(), truncated);
 
         if let Some(req_ev) = paired {
-            self.push_history(req_ev, Some(final_resp.clone())).await;
-            self.emit(request_done(&req_ev, Some(final_resp))).await;
+            self.emit(request_done(&req_ev, Some(final_resp.clone()))).await;
+            self.push_history(req_ev, Some(final_resp)).await;
         }
 
         res
@@ -889,14 +889,17 @@ async fn read_body<B: http_body::Body<Data = bytes::Bytes> + Unpin>(
     max: usize,
 ) -> Vec<u8> {
     let mut out = Vec::new();
-    while let Some(chunk) = body.data().await {
-        match chunk {
-            Ok(b) => {
-                if out.len() + b.len() > max {
-                    out.extend_from_slice(&b[..max.saturating_sub(out.len())]);
-                    break;
+    use hudsucker::hyper::body::Body as _BodyTrait;
+    while let Some(frame) = body.frame().await {
+        match frame {
+            Ok(f) => {
+                if let Ok(b) = f.into_data() {
+                    if out.len() + b.len() > max {
+                        out.extend_from_slice(&b[..max.saturating_sub(out.len())]);
+                        break;
+                    }
+                    out.extend_from_slice(&b);
                 }
-                out.extend_from_slice(&b);
             }
             Err(_) => break,
         }

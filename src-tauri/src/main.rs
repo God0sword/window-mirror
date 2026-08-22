@@ -112,12 +112,13 @@ fn window_mirror_plugin() -> TauriPlugin<tauri::Wry> {
             internal_shutdown_services,
         ])
         .setup(|app, _api| {
+            use tauri::Manager;
             // Initialize global app state
-            let app_state = AppState::new(app.handle().clone());
+            let handle = app.app_handle().clone();
+            let app_state = AppState::new(handle.clone());
             app.manage(app_state);
 
             // Start background services
-            let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = internal_start_services(handle).await {
                     tracing::error!("Failed to start background services: {}", e);

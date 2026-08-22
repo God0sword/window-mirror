@@ -214,7 +214,7 @@ impl SandboxService {
                 .await
                 .map_err(|_| format!("timeout after {:?}", timeout))
             }
-            Err(_) => Ok(()), // module without `_start`: instantiation is the program
+            Err(_) => Ok(Ok(())), // module without `_start`: instantiation is the program
         };
 
         let duration_ms = started.elapsed().as_millis() as u64;
