@@ -718,7 +718,7 @@ impl HttpHandler for Handler {
                             req.uri().to_string(),
                             headers_of(&req),
                             true,
-                            rule_id,
+                            rule_id.clone(),
                         );
                     }
                     Err(_) => {
@@ -889,7 +889,7 @@ async fn read_body<B: http_body::Body<Data = bytes::Bytes> + Unpin>(
     max: usize,
 ) -> Vec<u8> {
     let mut out = Vec::new();
-    use hudsucker::hyper::body::Body as _BodyTrait;
+    use http_body_util::BodyExt as _;
     while let Some(frame) = body.frame().await {
         match frame {
             Ok(f) => {

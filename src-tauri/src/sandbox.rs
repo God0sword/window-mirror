@@ -195,14 +195,22 @@ impl SandboxService {
         let start_fn = instance.get_typed_func::<(), ()>(&mut store, "_start");
 
         let started = std::time::Instant::now();
+        let fuel_left = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(fuel_limit));
         let outcome: Result<Result<(), String>, String> = match start_fn {
             Ok(func) => {
                 // Wall-clock bound via tokio timeout; the blocking call runs on
                 // the spawn_blocking pool so the async runtime stays live.
-                tokio::time::timeout(timeout, async {
+                let meter = fuel_left.clone();
+                tokio::time::timeout(timeout, async move {
                     let mut store = store;
+                    let meter2 = meter.clone();
                     let res = tokio::task::spawn_blocking(move || {
-                        func.call(&mut store, ())
+                        let out = func.call(&mut store, ());
+                        meter2.store(
+                            store.get_fuel().unwrap_or(0),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        out
                     })
                     .await;
                     match res {
@@ -218,9 +226,9 @@ impl SandboxService {
         };
 
         let duration_ms = started.elapsed().as_millis() as u64;
-        let fuel_consumed = fuel_limit.saturating_sub(
-            store.get_fuel().unwrap_or(fuel_limit),
-        );
+        let fuel_consumed = fuel_limit.saturating_sub(fuel_left.load(
+            std::sync::atomic::Ordering::Relaxed,
+        ));
 
         let stdout = String::from_utf8_lossy(&stdout_buf.contents()).into_owned();
         let stderr = String::from_utf8_lossy(&stderr_buf.contents()).into_owned();
