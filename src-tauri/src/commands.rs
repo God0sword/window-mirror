@@ -390,7 +390,7 @@ pub async fn open_file(path: String, state: State<'_, AppState>) -> Result<FileT
 
     // Add to open files
     let mut files = state.open_files.write().await;
-    files.insert(id.clone(), tab.clone());
+    files.files.insert(id.clone(), tab.clone());
 
     // Emit event
     state.emit_file_opened(tab.clone()).await;
@@ -401,7 +401,7 @@ pub async fn open_file(path: String, state: State<'_, AppState>) -> Result<FileT
 #[tauri::command]
 pub async fn save_file(id: String, content: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut files = state.open_files.write().await;
-    let tab = files.get_mut(&id).ok_or("File not found")?;
+    let tab = files.files.get_mut(&id).ok_or("File not found")?;
 
     tokio::fs::write(&tab.path, &content)
         .await
@@ -415,7 +415,7 @@ pub async fn save_file(id: String, content: String, state: State<'_, AppState>) 
 #[tauri::command]
 pub async fn close_file(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut files = state.open_files.write().await;
-    if files.remove(&id).is_none() {
+    if files.files.remove(&id).is_none() {
         return Err("File not found".into());
     }
     state.emit_file_closed(id).await;
@@ -424,7 +424,7 @@ pub async fn close_file(id: String, state: State<'_, AppState>) -> Result<(), St
 
 #[tauri::command]
 pub async fn get_open_files(state: State<'_, AppState>) -> Result<Vec<FileTab>, String> {
-    Ok(state.open_files.read().await.values().cloned().collect())
+    Ok(state.open_files.read().await.files.values().cloned().collect())
 }
 
 // ============================================================================
@@ -657,10 +657,11 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String
     Ok(state.settings.read().await.settings.clone())
 }
 
+
 #[tauri::command]
 pub async fn update_settings(settings: Settings, state: State<'_, AppState>) -> Result<(), String> {
     let mut s = state.settings.write().await;
-    *s = settings.clone();
+    s.settings = settings.clone();
     state.persist_settings().await.map_err(|e| e.to_string())?;
     state.emit_settings_change(settings).await;
     Ok(())
@@ -674,9 +675,9 @@ pub async fn update_settings(settings: Settings, state: State<'_, AppState>) -> 
 pub async fn internal_start_services(handle: AppHandle) -> Result<(), String> {
     tracing::info!("Starting Window Mirror background services");
 
-    let state: tauri::State<AppState> = handle
+    let state = handle
         .try_state::<AppState>()
-        .map_err(|_| "AppState not found".to_string())?;
+        .ok_or_else(|| "AppState not found".to_string())?;
 
     // Wire event bus into proxy service (so proxy can stream events)
     let _bus = state.event_bus.clone();

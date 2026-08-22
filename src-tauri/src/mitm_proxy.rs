@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
+use futures::{SinkExt, StreamExt};
 use hudsucker::{
     builder::ProxyBuilder,
     certificate_authority::RcgenAuthority,
@@ -27,7 +28,7 @@ use hudsucker::{
     tokio_tungstenite::tungstenite::Message as WsMessage,
     Body, HttpContext, HttpHandler, RequestOrResponse, WebSocketContext, WebSocketHandler,
 };
-use http_body;
+use http_body::Body as _;
 use tokio::sync::{broadcast, Notify, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -213,8 +214,8 @@ impl MITMProxyEngine {
     pub fn new_sync(config: ProxyConfig) -> Self {
         let (event_tx, _) = broadcast::channel(8_192);
         Self {
-            config: Arc::new(RwLock::new(config)),
             ca: Arc::new(RwLock::new(CAManager::new(config.ca.clone()))),
+            config: Arc::new(RwLock::new(config)),
             rules: Arc::new(RulesEngine::new()),
             history: Arc::new(RwLock::new(VecDeque::with_capacity(HISTORY_CAP))),
             stats: Arc::new(RwLock::new(ProxyStats::default())),
@@ -254,15 +255,15 @@ impl MITMProxyEngine {
             paused: self.paused.clone(),
         };
 
-        let mut builder = ProxyBuilder::new()
+        let proxy = ProxyBuilder::new()
             .with_addr(addr)
-            .with_rustls_client()
-            .with_certificate_authority(authority)
-            .with_http_handler(handler);
+            .with_ca(authority)
+            .with_rustls_connector(rustls::crypto::ring::default_provider())
+            .with_http_handler(handler)
+            .build()
+            .context("proxy build failed")?;
 
-        let proxy = builder.build().await.context("proxy build failed")?;
-
-        let handle = tauri::async_runtime::spawn(async move {
+        let handle = tokio::spawn(async move {
             if let Err(e) = proxy.start().await {
                 tracing::error!("proxy terminated: {e:#}");
             }
@@ -412,11 +413,11 @@ impl MITMProxyEngine {
             .map(|h| h.request.clone())
             .context("request id not found in history")?;
 
-        let mut req = build_request_from_event(&original)?;
-        apply_modifications(&mut req, &modifications)?;
+        let mut req = build_request_from_event(&original).map_err(anyhow::Error::msg)?;
+        apply_modifications(&mut req, &modifications).map_err(anyhow::Error::msg)?;
 
         let started = Instant::now();
-        let resp = send_request(req).await?;
+        let resp = send_request(req).await.map_err(anyhow::Error::msg)?;
         let total_ms = started.elapsed().as_millis() as u64;
 
         let (parts, body_bytes) = resp.into_parts();
@@ -437,7 +438,7 @@ impl MITMProxyEngine {
                 .to_string(),
             http_version: format!("{:?}", parts.version),
             headers,
-            body: String::from_utf8_lossy(body_bytes.as_ref()).into_owned(),
+            body: Some(String::from_utf8_lossy(body_bytes.as_ref()).into_owned()),
             body_truncated: false,
             timing: TimingInfo { total: Some(total_ms), ..Default::default() },
             intercepted: true,
@@ -538,7 +539,7 @@ impl Handler {
     }
 
     async fn bump<F: FnOnce(&mut ProxyStats)>(&self, f: F) {
-        f(&mut self.stats.write().await);
+        f(&mut *self.stats.write().await);
     }
 }
 
@@ -555,10 +556,15 @@ impl HttpHandler for Handler {
 
         let rid = uuid::Uuid::new_v4().to_string();
         let method = req.method().to_string();
-        let host = req.uri().host().or_else(|| {
-            req.headers().get("host").and_then(|h| h.to_str().ok())
-                .and_then(|h| h.split(':').next().map(String::from))
-        }).unwrap_or_default();
+        let host = req
+            .uri()
+            .host()
+            .map(String::from)
+            .or_else(|| {
+                req.headers().get("host").and_then(|h| h.to_str().ok())
+                    .and_then(|h| h.split(':').next().map(String::from))
+            })
+            .unwrap_or_default();
         let path_q = req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
         let url = if req.uri().host().is_some() {
             req.uri().to_string()
@@ -592,7 +598,7 @@ impl HttpHandler for Handler {
             url: url.clone(),
             http_version: version,
             headers: headers.clone(),
-            body: body_opt.as_ref().map(pretty_body),
+            body: body_opt.as_ref().map(|b| pretty_body(b)),
             body_truncated: truncated,
             remote_addr: _ctx.client_addr.to_string(),
             intercepted: false,
@@ -642,7 +648,7 @@ impl HttpHandler for Handler {
                 self.emit(request_done(&req_ev, Some(resp_ev))).await;
                 return RequestOrResponse::Response(resp);
             }
-            Some(InterceptAction::Mock { mock }) => {
+            Some(InterceptAction::Mock { mock_response: mock }) => {
                 intercepted = true;
                 rule_id = Some("mock".into());
                 if let Some(d) = mock.delay_ms {
@@ -731,7 +737,7 @@ impl HttpHandler for Handler {
         }
 
         // Track for response pairing.
-        PENDING.write().await.entry(host).or_default().push_back(req_ev.clone());
+        PENDING.write().await.entry(host.to_string()).or_default().push_back(req_ev.clone());
 
         let final_ev = finalize_req_ev(req_ev, &req, intercepted, rule_id.clone());
         self.emit(request_done(&final_ev, None)).await;
@@ -852,14 +858,25 @@ impl HttpHandler for Handler {
 
 impl WebSocketHandler for Handler {
     async fn handle_websocket(
-        &mut self,
-        _ctx: &WebSocketContext,
-        msg: WsMessage,
-    ) -> Option<WsMessage> {
-        if self.cfg.read().await.capture_websocket {
-            self.bump(|s| s.websocket_frames += 1).await;
+        mut self,
+        _ctx: WebSocketContext,
+        mut stream: impl Stream<Item = Result<WsMessage, hudsucker::tokio_tungstenite::tungstenite::Error>>
+            + Unpin
+            + Send
+            + 'static,
+        mut sink: impl Sink<WsMessage, Error = hudsucker::tokio_tungstenite::tungstenite::Error>
+            + Unpin
+            + Send
+            + 'static,
+    ) {
+        while let Some(Ok(msg)) = stream.next().await {
+            if self.cfg.read().await.capture_websocket {
+                self.bump(|s| s.websocket_frames += 1).await;
+            }
+            if sink.send(msg).await.is_err() {
+                break;
+            }
         }
-        Some(msg) // always forward untouched for now
     }
 }
 
@@ -1073,10 +1090,11 @@ fn apply_response_modifications(
             }
             "body" => {
                 let bytes = bytes::Bytes::from(m.value.clone());
+                let blen = bytes.len();
                 *res.body_mut() = Body::from(bytes);
                 res.headers_mut().insert(
                     "content-length",
-                    HeaderValue::from(bytes.len() as u64),
+                    HeaderValue::from(blen as u64),
                 );
             }
             other => return Err(format!("unknown target '{other}'")),

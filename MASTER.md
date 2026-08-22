@@ -517,3 +517,30 @@ app itself never elevates.
 
 *Generated from live session research; every claim above traces to a linked source in
 Part 6 or to code currently in-tree. Update this file — not the scattered ones.*
+
+---
+
+# PART 10 — THE LONG VISION (owner's north star, 2026-08-21)
+
+> **Disclaimer / direction:** Everything above (Phases 0–6) is only a fraction of the
+> full vision. The end state is a single self-contained AppImage — data stored inside —
+> that is the **main place for everything**:
+
+- **Project hub** — create and manage new projects from inside the browser; add any
+  capability as a feature/plugin.
+- **Coding home base** — the editor + workspace is where all code lives.
+- **Reverse-engineering suite** — dissect other sites and programs, translate open-source
+  internals into our browser, build near-identical copies of other software and code,
+  all in one place.
+- **Emulation layer** — emulate hardware *and* software to test against or as a gateway
+  to other destinations.
+- **Purple-team platform** — deep enough to take full control of my own router using
+  open-source tooling, and beyond.
+- **AI harness** — first-class host for AI agents/workflows.
+- **3D & mechanical** — code-driven 3D shaping (Blender-derived) plus mechanical
+  engineering tooling, absorbed as features.
+
+Everything gets made a feature, taken from open sources, translated into our browser,
+and reverse-engineered. **This lands far after we finish the current phases — there is
+a long way to go.** Ship order stays: shell → proxy → devtools → SAST → sandbox →
+persistence → then this list, one absorbed capability at a time.

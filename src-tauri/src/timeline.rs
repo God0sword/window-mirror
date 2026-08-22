@@ -186,7 +186,7 @@ fn time_key(event: &MirrorEvent) -> String {
 }
 
 pub struct TimelineStore {
-    db: Database,
+    db: Arc<Database>,
     _base_dir: PathBuf,
     notify: Arc<Notify>,
     event_count: Arc<std::sync::atomic::AtomicU64>,
@@ -197,7 +197,7 @@ impl TimelineStore {
         let _ = std::fs::create_dir_all(&base_dir);
         let db_path = base_dir.join("timeline.redb");
 
-        let db = Database::create(&db_path).unwrap_or_else(|e| {
+        let db = Arc::new(Database::create(&db_path).unwrap_or_else(|e| {
             tracing::error!(
                 "Failed to create timeline DB at {} ({}), falling back to in-memory",
                 db_path.display(),
@@ -206,7 +206,7 @@ impl TimelineStore {
             Database::builder()
                 .create_with_backend(redb::backends::InMemoryBackend::new())
                 .expect("in-memory redb must always work")
-        });
+        )});
 
         // Ensure both tables exist before first use.
         let write_txn = db.begin_write().expect("begin_write on fresh db");
@@ -230,7 +230,7 @@ impl TimelineStore {
         let serialized = serde_json::to_string(&event)?;
         let tkey = time_key(&event);
 
-        let db = self.db.clone();
+        let db = self.db.clone(); // Arc clone
         let count = self.event_count.clone();
         let notify = self.notify.clone();
 
@@ -258,7 +258,7 @@ impl TimelineStore {
     /// Most recent `limit` events, newest first.
     #[instrument(skip(self))]
     pub async fn recent(&self, limit: usize) -> Vec<crate::commands::MirrorEventSummary> {
-        let db = self.db.clone();
+        let db = self.db.clone(); // Arc clone
 
         let res = tokio::task::spawn_blocking(move || -> Result<Vec<_>, TimelineError> {
             let read_txn = db.begin_read()?;
@@ -296,7 +296,7 @@ impl TimelineStore {
 
     /// Stream every event as a JSONL file (one JSON object per line).
     pub async fn export_jsonl(&self, path: &PathBuf) -> Result<u64, TimelineError> {
-        let db = self.db.clone();
+        let db = self.db.clone(); // Arc clone
         let path = path.clone();
 
         let written = tokio::task::spawn_blocking(move || -> Result<u64, TimelineError> {
@@ -340,6 +340,10 @@ fn summary_of(event: &MirrorEvent) -> crate::commands::MirrorEventSummary {
             MirrorEvent::Custom(_) => crate::commands::EventKind::Custom,
         },
         summary: event.summary(),
-        source_location: event.source_location(),
+        source_location: event.source_location().map(|loc| crate::commands::SourceLocation {
+                    file: loc.file,
+                    line: loc.line,
+                    column: loc.column,
+                }),
     }
 }

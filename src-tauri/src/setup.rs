@@ -8,10 +8,11 @@ use tauri::{App, Manager};
 use tokio::sync::broadcast;
 use tracing::instrument;
 
+use tauri::{App, Emitter, Manager};
 use crate::state::AppState;
 
 #[instrument(skip(app))]
-pub fn setup_app(app: &App) -> Result<()> {
+pub fn setup_app(app: &mut App) -> std::result::Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Setting up Window Mirror application");
 
     let handle = app.handle().clone();
@@ -22,7 +23,7 @@ pub fn setup_app(app: &App) -> Result<()> {
 
     // Forward MITM proxy events → Tauri frontend + timeline store.
     let mut rx: broadcast::Receiver<crate::mitm_proxy::ProxyEvent> =
-        state.mitm_proxy.subscribe();
+        state.proxy.subscribe();
     let h = handle.clone();
     let timeline = state.timeline.clone();
     tauri::async_runtime::spawn(async move {

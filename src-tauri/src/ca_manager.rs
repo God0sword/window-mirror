@@ -6,8 +6,8 @@
 
 use anyhow::{Context as _, Result};
 use rcgen::{
-    BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType,
-    DnValue, IsCa, KeyPair, KeyUsagePurpose,
+    BasicConstraints, CertificateParams, DistinguishedName, DnType,
+    DnValue, IsCa, Issuer, KeyPair, KeyUsagePurpose,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -45,8 +45,8 @@ impl Default for CAConfig {
 pub struct CAManager {
     config: CAConfig,
     ca_dir: PathBuf,
-    key_pair: Option<KeyPair>,
-    cert: Option<Certificate>,
+    ca_cert_pem: Option<String>,
+    ca_key_pem: Option<String>,
 }
 
 impl CAManager {
@@ -55,7 +55,7 @@ impl CAManager {
             .unwrap_or_else(std::env::temp_dir)
             .join("window-mirror/ca");
         let _ = fs::create_dir_all(&ca_dir);
-        Self { config, ca_dir, key_pair: None, cert: None }
+        Self { config, ca_dir, ca_cert_pem: None, ca_key_pem: None }
     }
 
     /// Load existing PEMs or generate fresh ones. Never fails hard — a broken
@@ -76,8 +76,8 @@ impl CAManager {
         self.generate()?;
         if self.config.auto_install {
             if let Some(stores) = self.config.trust_stores.clone() {
-                if let Some(cert) = &self.cert {
-                    let _ = self.install_to_stores(cert, &stores).await;
+                if let Some(pem) = self.ca_cert_pem.clone() {
+                    let _ = self.install_pem_to_stores(&pem, &stores).await;
                 }
             }
         }
@@ -93,10 +93,10 @@ impl CAManager {
     fn try_load(&mut self, cert_p: &PathBuf, key_p: &PathBuf) -> Result<()> {
         let cert_pem = fs::read_to_string(cert_p).context("read ca.pem")?;
         let key_pem = fs::read_to_string(key_p).context("read ca.key.pem")?;
-        let key = KeyPair::from_pem(&key_pem).context("parse CA key")?;
-        let cert = Certificate::from_pem(&cert_pem).context("parse CA cert")?;
-        self.key_pair = Some(key);
-        self.cert = Some(cert);
+        // Validate that they form a usable issuer before accepting them.
+        build_issuer(&cert_pem, &key_pem)?;
+        self.ca_cert_pem = Some(cert_pem);
+        self.ca_key_pem = Some(key_pem);
         info!("loaded existing CA from {}", self.ca_dir.display());
         Ok(())
     }
@@ -126,44 +126,45 @@ impl CAManager {
         params.not_after = now + Duration::days(self.config.validity_days.unwrap_or(3650));
 
         let key = KeyPair::generate().context("generate CA keypair")?;
-        let cert = params.signed_by(&key, &params, &key)
-            .or_else(|_| params.self_signed(&key))
-            .context("self-sign CA")?;
+        let key_pem_str = key.serialize_pem();
+        let cert = params.self_signed(&key).context("self-sign CA")?;
+        let cert_pem_str = cert.pem();
 
         // Persist.
         let (cert_p, key_p) = self.resolved_paths();
         fs::create_dir_all(cert_p.parent().unwrap_or(&self.ca_dir))?;
-        fs::write(&cert_p, cert.pem())?;
-        fs::write(&key_p, key.serialize_pem())?;
+        fs::write(&cert_p, &cert_pem_str)?;
+        fs::write(&key_p, &key_pem_str)?;
 
         info!("generated new CA at {} (valid {}d)", cert_p.display(),
               self.config.validity_days.unwrap_or(3650));
-        self.key_pair = Some(key);
-        self.cert = Some(cert);
+        self.ca_cert_pem = Some(cert_pem_str);
+        self.ca_key_pem = Some(key_pem_str);
         Ok(())
     }
 
     /// Build the hudsucker authority used to sign per-host leaf certificates.
+    /// Rebuilt from the stored PEMs so repeated proxy starts work.
     pub fn authority(
         &self,
     ) -> Result<hudsucker::certificate_authority::RcgenAuthority> {
-        let key = self.key_pair.as_ref().context("CA not initialized")?.clone();
-        let cert = self.cert.as_ref().context("CA not initialized")?.clone();
+        let cert_pem = self.ca_cert_pem.as_ref().context("CA not initialized")?;
+        let key_pem = self.ca_key_pem.as_ref().context("CA not initialized")?;
+        let issuer = build_issuer(cert_pem, key_pem)?;
         // Cache size = number of leaf certs kept in memory.
-        Ok(hudsucker::certificate_authority::RcgenAuthority::new(key, cert, 1_000))
+        Ok(hudsucker::certificate_authority::RcgenAuthority::new(
+            issuer,
+            1_000,
+            rustls::crypto::ring::default_provider(),
+        ))
     }
 
     pub fn cert_pem(&self) -> Option<String> {
-        self.cert.as_ref().map(|c| c.pem())
+        self.ca_cert_pem.clone()
     }
 
     pub fn has_cert(&self) -> bool {
-        self.cert.is_some()
-    }
-
-    /// Install into requested trust stores from a parsed certificate.
-    pub async fn install_to_stores(&self, cert: &Certificate, stores: &[String]) -> Result<()> {
-        self.install_pem_to_stores(&cert.pem(), stores).await
+        self.ca_cert_pem.is_some()
     }
 
     /// Install directly from PEM text — the path used by the Tauri command
@@ -264,4 +265,10 @@ impl CAManager {
             }
         }
     }
+}
+
+/// Rebuild an rcgen 0.14 `Issuer` from persisted PEMs.
+fn build_issuer(cert_pem: &str, key_pem: &str) -> Result<Issuer<'static, KeyPair>> {
+    let key = KeyPair::from_pem(key_pem).context("parse CA key")?;
+    Issuer::from_ca_cert_pem(cert_pem, key).context("parse CA certificate")
 }

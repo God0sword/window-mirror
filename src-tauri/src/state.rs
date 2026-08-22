@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 use tauri::AppHandle;
 use tokio::sync::RwLock;
 use tracing::instrument;

@@ -19,6 +19,7 @@ mod mitm_proxy;
 
 use std::sync::Arc;
 
+use tauri::Manager;
 use tauri::{
     Manager, Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},
@@ -55,7 +56,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(window_mirror_plugin())
-        .setup(setup_app)
+        .setup(|app| setup_app(app))
         .invoke_handler(tauri::generate_handler![
             // Window/Mode commands
             get_current_mode,
@@ -104,7 +105,7 @@ fn main() {
 }
 
 /// Window Mirror core plugin — registers background services, state, channels
-fn window_mirror_plugin<R: Runtime>() -> TauriPlugin<R> {
+fn window_mirror_plugin() -> TauriPlugin<tauri::Wry> {
     PluginBuilder::new("window-mirror")
         .invoke_handler(tauri::generate_handler![
             // Internal/plugin commands

@@ -156,7 +156,7 @@ impl RulesEngine {
         let rules = self.rules.read().await;
         for rule in rules.iter() {
             if !rule.enabled { continue; }
-            if matches!(rule.match_.direction, Some(d) if d == "response") { continue; }
+            if rule.match_.direction.as_deref() == Some("response") { continue; }
             
             if self.matches(&rule.match_, request, None).await {
                 return Some(rule.action.clone());
@@ -170,7 +170,7 @@ impl RulesEngine {
         let rules = self.rules.read().await;
         for rule in rules.iter() {
             if !rule.enabled { continue; }
-            if matches!(rule.match_.direction, Some(d) if d == "request") { continue; }
+            if rule.match_.direction.as_deref() == Some("request") { continue; }
             
             if self.matches(&rule.match_, request, Some(response)).await {
                 return Some(rule.action.clone());
@@ -224,10 +224,10 @@ impl RulesEngine {
 
         // Content types
         if let Some(content_types) = &match_.content_types {
-            let req_ct = request.headers.get("content-type").unwrap_or("");
-            let resp_ct = response.and_then(|r| r.headers.get("content-type")).unwrap_or("");
+            let req_ct = request.headers.get("content-type").map_or("", |v| v.as_str());
+            let resp_ct = response.and_then(|r| r.headers.get("content-type")).map_or("", |v| v.as_str());
             let ct = if response.is_some() { resp_ct } else { req_ct };
-            let matched = content_types.iter().any(|ct| ct.contains(ct));
+            let matched = content_types.iter().any(|c| ct.contains(c));
             if !matched { return false; }
         }
 

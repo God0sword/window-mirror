@@ -29,9 +29,9 @@ hyper-util = { version = "0.1", features = ["full"] }
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1"
-rustls = { version = "0.23", features = ["std"] }
+rustls = { version = "0.23", features = ["std", "ring"] }
 rustls-pemfile = "2.0"
-rcgen = "0.14"
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
 time = "0.3"
 h2 = "0.4"
 tokio-rustls = "0.26"

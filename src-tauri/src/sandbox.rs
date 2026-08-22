@@ -19,7 +19,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use wasmtime::{Config, Engine, Linker, Module, Store};
 use wasmtime_wasi::preview1::{self as wasi_p1};
-use wasmtime_wasi::WasiCtx;
+use wasmtime_wasi::preview1::WasiP1Ctx;
 use wasmtime_wasi::DirPerms;
 use wasmtime_wasi::FilePerms;
 
@@ -60,7 +60,7 @@ impl SandboxPreset {
 
 /// Store state carried into every instantiation.
 struct GuestState {
-    wasi: WasiCtx,
+    wasi: WasiP1Ctx,
     fuel_used: u64,
 }
 
@@ -183,7 +183,7 @@ impl SandboxService {
             None => {} // no filesystem surface at all
         }
 
-        let state = GuestState { wasi: builder.build(), fuel_used: 0 };
+        let state = GuestState { wasi: builder.build_p1(), fuel_used: 0 };
         let mut store = Store::new(&engine, state);
         store.set_fuel(fuel_limit).map_err(|e| e.to_string())?;
 
@@ -196,7 +196,7 @@ impl SandboxService {
 
         let started = std::time::Instant::now();
         let outcome: Result<Result<(), String>, String> = match start_fn {
-            Some(func) => {
+            Ok(func) => {
                 // Wall-clock bound via tokio timeout; the blocking call runs on
                 // the spawn_blocking pool so the async runtime stays live.
                 tokio::time::timeout(timeout, async {
@@ -214,7 +214,7 @@ impl SandboxService {
                 .await
                 .map_err(|_| format!("timeout after {:?}", timeout))
             }
-            None => Ok(()), // module without `_start`: instantiation is the program
+            Err(_) => Ok(()), // module without `_start`: instantiation is the program
         };
 
         let duration_ms = started.elapsed().as_millis() as u64;
@@ -295,7 +295,7 @@ fn build_engine() -> Engine {
     // Keep feature surface minimal — explicit allowlist philosophy.
     config.wasm_threads(false);
     config.wasm_multi_memory(false);
-    config.relaxed_simd(false);
+    config.wasm_relaxed_simd(false);
     config.wasm_component_model(false);
 
     #[cfg(not(debug_assertions))]

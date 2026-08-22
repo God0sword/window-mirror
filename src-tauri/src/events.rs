@@ -161,7 +161,11 @@ impl InternalEventBus {
                 MirrorEvent::Custom(_) => crate::commands::EventKind::Custom,
             },
             summary: event.summary(),
-            source_location: event.source_location(),
+            source_location: event.source_location().map(|loc| crate::commands::SourceLocation {
+                file: loc.file,
+                line: loc.line,
+                column: loc.column,
+            }),
         };
 
         let event_payload = MirrorEventEvent {

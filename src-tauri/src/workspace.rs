@@ -133,9 +133,9 @@ impl WorkspaceManager {
         if state_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&state_path) {
                 if let Ok(workspace) = serde_json::from_str::<WorkspaceInfo>(&content) {
-                    manager.current = workspace;
-                    manager.workspaces.insert(workspace.id.clone(), workspace.clone());
                     info!("Restored workspace: {} ({})", workspace.name, workspace.id);
+                    manager.workspaces.insert(workspace.id.clone(), workspace.clone());
+                    manager.current = workspace.clone();
                     return workspace;
                 }
             }
