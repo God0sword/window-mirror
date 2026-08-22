@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use futures::{SinkExt, StreamExt};
+use hudsucker::futures::{SinkExt as _, StreamExt as _, Sink as _, Stream as _};
 use hudsucker::{
     builder::ProxyBuilder,
     certificate_authority::RcgenAuthority,
@@ -860,11 +860,11 @@ impl WebSocketHandler for Handler {
     async fn handle_websocket(
         mut self,
         _ctx: WebSocketContext,
-        mut stream: impl Stream<Item = Result<WsMessage, hudsucker::tokio_tungstenite::tungstenite::Error>>
+        mut stream: impl hudsucker::futures::Stream<Item = Result<WsMessage, hudsucker::tokio_tungstenite::tungstenite::Error>>
             + Unpin
             + Send
             + 'static,
-        mut sink: impl Sink<WsMessage, Error = hudsucker::tokio_tungstenite::tungstenite::Error>
+        mut sink: impl hudsucker::futures::Sink<WsMessage, Error = hudsucker::tokio_tungstenite::tungstenite::Error>
             + Unpin
             + Send
             + 'static,

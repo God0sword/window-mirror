@@ -19,7 +19,6 @@ mod mitm_proxy;
 
 use std::sync::Arc;
 
-use tauri::Manager;
 use tauri::{
     Manager, Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},

@@ -4,11 +4,10 @@
 //! settings, and forwards proxy events to the frontend event bus.
 
 use anyhow::Result;
-use tauri::{App, Manager};
+use tauri::{App, Emitter, Manager};
 use tokio::sync::broadcast;
 use tracing::instrument;
 
-use tauri::{App, Emitter, Manager};
 use crate::state::AppState;
 
 #[instrument(skip(app))]
