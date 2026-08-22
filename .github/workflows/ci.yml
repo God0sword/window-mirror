@@ -30,12 +30,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: packages/frontend/dist
-          retention-days: 7
-
   rust:
     name: Rust (cargo check + clippy)
     runs-on: ubuntu-latest
@@ -124,5 +118,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: window-mirror-appimage
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          path: target/release/bundle/appimage/*.AppImage
           retention-days: 14
