@@ -105,6 +105,10 @@ jobs:
         working-directory: packages/frontend
         run: npm ci --no-audit --no-fund
 
+      - name: Build frontend
+        working-directory: packages/frontend
+        run: npm run build
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
