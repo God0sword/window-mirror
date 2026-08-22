@@ -39,7 +39,7 @@ hyper-rustls = { version = "0.27", features = ["http2"] }
 which = "6"
 
 # MITM Proxy
-hudsucker = { version = "0.24", features = ["rcgen-ca", "rustls-client", "http2", "full", "decoder"] }
+hudsucker = { version = "0.24", features = ["rcgen-ca", "rustls-client", "http2", "decoder"] }
 moka = "0.12"
 
 # WebSocket
